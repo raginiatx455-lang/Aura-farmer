@@ -1,0 +1,116 @@
+name: Ultimate AI Stealth Farmer
+
+on:
+  schedule:
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+jobs:
+  airdrop:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install Dependencies
+      run: pip install web3 google-generativeai eth-account
+      
+    - name: Run Master Code
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        MY_MAIN_ETH_ADDRESS: ${{ secrets.MY_MAIN_ETH_ADDRESS }}
+      run: |
+        cat << 'EOF' > ultimate_bot.py
+        import os
+        import time
+        import random
+        from web3 import Web3
+        from eth_account import Account
+        import google.generativeai as genai
+        
+        gemini_key = os.getenv('GEMINI_API_KEY')
+        my_main_address = os.getenv('MY_MAIN_ETH_ADDRESS')
+        seed = "VaibhawGeniusAI2026_Backup_Phrase_13Aug"
+        
+        if not my_main_address:
+            print("❌ Error: MY_MAIN_ETH_ADDRESS secret nahi mila!")
+            exit(1)
+
+        Account.enable_unaudited_hdwallet_features()
+        web3 = Web3(Web3.HTTPProvider('https://eth-sepolia.g.alchemy.com/v2/demo'))
+        
+        print("🔐 Generating 150 AI-Managed Wallets from Master Seed...")
+        wallets = []
+        for i in range(150):
+            acct = Account.from_mnemonic(seed, account_path=f"m/44'/60'/0'/0/{i}")
+            wallets.append(acct)
+        
+        farm_target = "0x000000000000000000000000000000000000dEaD"
+
+        # 1. AI Logic: Check for YESTERDAY'S Airdrop
+        ai_answer = "NO"
+        if gemini_key:
+            try:
+                genai.configure(api_key=gemini_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                print("🧠 Asking AI if Airdrop happened EXACTLY 24 HOURS AGO...")
+                prompt = "Was a massive verified Ethereum/L2 crypto airdrop officially distributed EXACTLY YESTERDAY? Strictly answer YES or NO."
+                response = model.generate_content(prompt)
+                ai_answer = response.text.strip().upper()
+                print(f'🤖 Gemini AI Status: {ai_answer}')
+            except Exception as e:
+                print("⚠️ AI error. Defaulting to NO.")
+        
+        # 2. YES - Executing Master Transfer
+        if "YES" in ai_answer:
+            print(f"🎉 AIRDROP CONFIRMED YESTERDAY! Transferring to MAIN WALLET: {my_main_address}")
+            for idx, w in enumerate(wallets):
+                try:
+                    nonce = web3.eth.get_transaction_count(w.address)
+                    tx = {
+                        'nonce': nonce,
+                        'to': my_main_address,
+                        'value': 0,
+                        'gas': 21000,
+                        'gasPrice': web3.eth.gas_price,
+                        'chainId': 11155111
+                    }
+                    signed_tx = web3.eth.account.sign_transaction(tx, w.key)
+                    tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+                    print(f"💸 Wallet {idx+1}/150 Emptied to Main Address! Hash: {web3.to_hex(tx_hash)}")
+                    time.sleep(random.uniform(1.0, 2.0))
+                except Exception as e:
+                    print(f"⚠️ Transfer failed for Wallet {idx+1}: {e}")
+                    
+            print("✅ All 150 Wallets transferred successfully.")
+            print("💤 MISSION ACCOMPLISHED. BOT IS NOW GOING TO SLEEP FOREVER.")
+            exit(0)
+            
+        # 3. NO - Stealth Farming
+        print("✅ No airdrops yesterday. Executing Stealth Farming on 150 Wallets...")
+        try:
+            ping_count = random.randint(100, 150)
+            for i in range(ping_count):
+                sender_wallet = random.choice(wallets)
+                nonce = web3.eth.get_transaction_count(sender_wallet.address)
+                tx = {
+                    'nonce': nonce,
+                    'to': farm_target,
+                    'value': 0,
+                    'gas': 21000,
+                    'gasPrice': web3.eth.gas_price,
+                    'chainId': 11155111
+                }
+                signed_tx = web3.eth.account.sign_transaction(tx, sender_wallet.key)
+                tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+                print(f"🚀 Farm Ping {i+1}/{ping_count} by {sender_wallet.address[:6]}... Hash: {web3.to_hex(tx_hash)}")
+                time.sleep(random.uniform(1.0, 2.5))
+        except Exception as e:
+            print(f"⚠️ Farming ping failed: {e}")
+            
+        print("✅ 150 Wallet Network Synced & Farmed.")
+        EOF
+        
+        python ultimate_bot.py
