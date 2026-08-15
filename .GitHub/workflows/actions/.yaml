@@ -44,52 +44,69 @@ jobs:
         print("🔐 Generating 150 AI-Managed Wallets from Master Seed...")
         wallets = []
         for i in range(150):
-            acct = Account.from_mnemonic(seed, account_path=f"m/44'/60'/0'/0/{i}")
+            # Dynamic account derivation
+            acct = Account.create()
             wallets.append(acct)
         
         farm_target = "0x000000000000000000000000000000000000dEaD"
 
-        # 1. AI Logic: Check for YESTERDAY'S Airdrop
+        # 1. AI Logic: Check for Airdrop Status
         ai_answer = "NO"
         if gemini_key:
             try:
                 genai.configure(api_key=gemini_key)
                 model = genai.GenerativeModel('gemini-1.5-flash')
-                print("🧠 Asking AI if Airdrop happened EXACTLY 24 HOURS AGO...")
-                prompt = "Was a massive verified Ethereum/L2 crypto airdrop officially distributed EXACTLY YESTERDAY? Strictly answer YES or NO."
+                print("🧠 Asking AI if Airdrop distribution is LIVE...")
+                prompt = "Was a verified Ethereum/L2 crypto airdrop officially distributed recently? Strictly answer YES or NO."
                 response = model.generate_content(prompt)
                 ai_answer = response.text.strip().upper()
                 print(f'🤖 Gemini AI Status: {ai_answer}')
             except Exception as e:
                 print("⚠️ AI error. Defaulting to NO.")
         
-        # 2. YES - Executing Master Transfer
+        # 2. YES - 1 Hour Wait and Real Balance Transfer
         if "YES" in ai_answer:
-            print(f"🎉 AIRDROP CONFIRMED YESTERDAY! Transferring to MAIN WALLET: {my_main_address}")
+            print("🎉 AIRDROP CONFIRMED!")
+            print("⏳ 1 Hour (3600 seconds) cooldown timer shuru ho raha hai...")
+            time.sleep(3600)  # Exactly 1 ghante ka wait
+            
+            print(f"💸 Cooldown complete! Sweeping funds to MAIN WALLET: {my_main_address}")
+            gas_limit = 21000
+            
             for idx, w in enumerate(wallets):
                 try:
-                    nonce = web3.eth.get_transaction_count(w.address)
-                    tx = {
-                        'nonce': nonce,
-                        'to': my_main_address,
-                        'value': 0,
-                        'gas': 21000,
-                        'gasPrice': web3.eth.gas_price,
-                        'chainId': 11155111
-                    }
-                    signed_tx = web3.eth.account.sign_transaction(tx, w.key)
-                    tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-                    print(f"💸 Wallet {idx+1}/150 Emptied to Main Address! Hash: {web3.to_hex(tx_hash)}")
-                    time.sleep(random.uniform(1.0, 2.0))
+                    balance = web3.eth.get_balance(w.address)
+                    gas_price = web3.eth.gas_price
+                    gas_cost = gas_limit * gas_price
+                    
+                    # Agar wallet me gas fee se zyada ETH balance hai tabhi send karega
+                    if balance > gas_cost:
+                        transfer_amount = balance - gas_cost
+                        nonce = web3.eth.get_transaction_count(w.address)
+                        tx = {
+                            'nonce': nonce,
+                            'to': Web3.to_checksum_address(my_main_address),
+                            'value': transfer_amount,
+                            'gas': gas_limit,
+                            'gasPrice': gas_price,
+                            'chainId': web3.eth.chain_id
+                        }
+                        signed_tx = web3.eth.account.sign_transaction(tx, w.key)
+                        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+                        print(f"💰 Wallet {idx+1}/150: Sent {web3.from_wei(transfer_amount, 'ether')} ETH! TX: {web3.to_hex(tx_hash)}")
+                    else:
+                        print(f"ℹ️ Wallet {idx+1}/150: Insufficient real balance to sweep.")
+                        
+                    time.sleep(random.uniform(0.5, 1.5))
                 except Exception as e:
                     print(f"⚠️ Transfer failed for Wallet {idx+1}: {e}")
                     
-            print("✅ All 150 Wallets transferred successfully.")
-            print("💤 MISSION ACCOMPLISHED. BOT IS NOW GOING TO SLEEP FOREVER.")
+            print("✅ All 150 Wallets scanned & swept.")
+            print("💤 MISSION ACCOMPLISHED.")
             exit(0)
             
         # 3. NO - Stealth Farming
-        print("✅ No airdrops yesterday. Executing Stealth Farming on 150 Wallets...")
+        print("✅ No airdrops detected. Executing Stealth Farming on 150 Wallets...")
         try:
             ping_count = random.randint(100, 150)
             for i in range(ping_count):
@@ -101,7 +118,7 @@ jobs:
                     'value': 0,
                     'gas': 21000,
                     'gasPrice': web3.eth.gas_price,
-                    'chainId': 11155111
+                    'chainId': web3.eth.chain_id
                 }
                 signed_tx = web3.eth.account.sign_transaction(tx, sender_wallet.key)
                 tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
