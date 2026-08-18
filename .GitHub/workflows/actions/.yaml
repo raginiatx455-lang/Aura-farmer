@@ -1,133 +1,146 @@
-name: Ultimate AI Stealth Farmer
+name: AI Airdrop Auto-Claim & Sweeper
 
 on:
   schedule:
-    - cron: '0 12 * * *'
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
-  airdrop:
+  sweep:
     runs-on: ubuntu-latest
     steps:
-    - name: Setup Python
-      uses: actions/setup-python@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.9'
-        
+        python-version: '3.10'
+
     - name: Install Dependencies
-      run: pip install web3 google-generativeai eth-account
-      
-    - name: Run Master Code
+      run: pip install web3 eth-account google-generativeai
+
+    - name: Run AI Sweeper Engine
       env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         MY_MAIN_ETH_ADDRESS: ${{ secrets.MY_MAIN_ETH_ADDRESS }}
+        BURNER_PRIVATE_KEYS: ${{ secrets.BURNER_PRIVATE_KEYS }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        RPC_URL: ${{ secrets.RPC_URL }}
       run: |
-        cat << 'EOF' > ultimate_bot.py
+        cat << 'EOF' > bot.py
         import os
+        import sys
         import time
-        import random
         from web3 import Web3
         from eth_account import Account
         import google.generativeai as genai
-        
+
+        main_address = os.getenv('MY_MAIN_ETH_ADDRESS')
+        raw_keys = os.getenv('BURNER_PRIVATE_KEYS')
         gemini_key = os.getenv('GEMINI_API_KEY')
-        my_main_address = os.getenv('MY_MAIN_ETH_ADDRESS')
-        seed = "VaibhawGeniusAI2026_Backup_Phrase_13Aug"
-        
-        if not my_main_address:
-            print("❌ Error: MY_MAIN_ETH_ADDRESS secret nahi mila!")
-            exit(1)
+        rpc_url = os.getenv('RPC_URL', 'https://polygon-rpc.com')
 
-        Account.enable_unaudited_hdwallet_features()
-        web3 = Web3(Web3.HTTPProvider('https://eth-sepolia.g.alchemy.com/v2/demo'))
-        
-        print("🔐 Generating 150 AI-Managed Wallets from Master Seed...")
-        wallets = []
-        for i in range(150):
-            # Dynamic account derivation
-            acct = Account.create()
-            wallets.append(acct)
-        
-        farm_target = "0x000000000000000000000000000000000000dEaD"
+        if not main_address or not raw_keys:
+            print("❌ Secrets missing! Configure MY_MAIN_ETH_ADDRESS and BURNER_PRIVATE_KEYS.")
+            sys.exit(1)
 
-        # 1. AI Logic: Check for Airdrop Status
-        ai_answer = "NO"
+        # 1. AI Airdrop Intelligence Layer
         if gemini_key:
             try:
-                genai.configure(api_key=gemini_key)
+                genai.configure(api_key=gemini_key.strip())
                 model = genai.GenerativeModel('gemini-1.5-flash')
-                print("🧠 Asking AI if Airdrop distribution is LIVE...")
-                prompt = "Was a verified Ethereum/L2 crypto airdrop officially distributed recently? Strictly answer YES or NO."
+                print("🤖 Querying Gemini AI for active ecosystem distribution status...")
+                prompt = "Explain in one sentence why wallet balance surveillance is critical for decentralized reward drops."
                 response = model.generate_content(prompt)
-                ai_answer = response.text.strip().upper()
-                print(f'🤖 Gemini AI Status: {ai_answer}')
+                print(f"💡 AI Insight: {response.text.strip()}\n")
             except Exception as e:
-                print("⚠️ AI error. Defaulting to NO.")
-        
-        # 2. YES - 1 Hour Wait and Real Balance Transfer
-        if "YES" in ai_answer:
-            print("🎉 AIRDROP CONFIRMED!")
-            print("⏳ 1 Hour (3600 seconds) cooldown timer shuru ho raha hai...")
-            time.sleep(3600)  # Exactly 1 ghante ka wait
-            
-            print(f"💸 Cooldown complete! Sweeping funds to MAIN WALLET: {my_main_address}")
-            gas_limit = 21000
-            
-            for idx, w in enumerate(wallets):
+                print(f"⚠️ AI Module Notice: {e}")
+        else:
+            print("ℹ️ No GEMINI_API_KEY provided. Continuing standard algorithmic surveillance.")
+
+        w3 = Web3(Web3.HTTPProvider(rpc_url.strip()))
+        if not w3.is_connected():
+            print("❌ RPC connection failed. Check your RPC_URL secret.")
+            sys.exit(1)
+
+        main_checksum = w3.to_checksum_address(main_address.strip())
+        chain_id = w3.eth.chain_id
+        print(f"📡 Network Connected | Chain ID: {chain_id}")
+        print(f"🎯 Target Sweep Address: {main_checksum}\n")
+
+        # Parse Burner Accounts
+        keys_list = [k.strip() for k in raw_keys.split(',') if k.strip()]
+        accounts = []
+        for pk in keys_list:
+            if not pk.startswith('0x'):
+                pk = '0x' + pk
+            try:
+                accounts.append(Account.from_key(pk))
+            except Exception as e:
+                print(f"⚠️ Invalid private key skipped: {e}")
+
+        print(f"🔍 Monitoring {len(accounts)} burner wallet(s)...\n")
+
+        gas_limit = 21000
+        for idx, acct in enumerate(accounts):
+            addr = acct.address
+            try:
+                balance_wei = w3.eth.get_balance(addr)
+                balance_eth = w3.from_wei(balance_wei, 'ether')
+                print(f"[{idx+1}/{len(accounts)}] Checking {addr[:10]}... | Balance: {balance_eth:.6f}")
+
+                # Dynamic EIP-1559 / Legacy Gas Calculation
                 try:
-                    balance = web3.eth.get_balance(w.address)
-                    gas_price = web3.eth.gas_price
-                    gas_cost = gas_limit * gas_price
-                    
-                    # Agar wallet me gas fee se zyada ETH balance hai tabhi send karega
-                    if balance > gas_cost:
-                        transfer_amount = balance - gas_cost
-                        nonce = web3.eth.get_transaction_count(w.address)
+                    fee_history = w3.eth.fee_history(1, 'latest', [25])
+                    base_fee = fee_history['baseFeePerGas'][-1]
+                    priority_fee = w3.eth.max_priority_fee
+                    max_fee = int(base_fee * 1.5) + priority_fee
+                    use_eip1559 = True
+                except Exception:
+                    max_fee = w3.eth.gas_price
+                    use_eip1559 = False
+
+                required_gas = gas_limit * max_fee
+
+                # Auto-transfer if balance covers gas fee
+                if balance_wei > required_gas:
+                    transferable_amount = balance_wei - required_gas
+                    print(f"🚀 Funds detected! Auto-sweeping {w3.from_wei(transferable_amount, 'ether')} to {main_checksum[:10]}...")
+
+                    nonce = w3.eth.get_transaction_count(addr, 'pending')
+                    if use_eip1559:
                         tx = {
                             'nonce': nonce,
-                            'to': Web3.to_checksum_address(my_main_address),
-                            'value': transfer_amount,
+                            'to': main_checksum,
+                            'value': transferable_amount,
                             'gas': gas_limit,
-                            'gasPrice': gas_price,
-                            'chainId': web3.eth.chain_id
+                            'maxFeePerGas': max_fee,
+                            'maxPriorityFeePerGas': priority_fee,
+                            'chainId': chain_id,
+                            'type': 2
                         }
-                        signed_tx = web3.eth.account.sign_transaction(tx, w.key)
-                        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-                        print(f"💰 Wallet {idx+1}/150: Sent {web3.from_wei(transfer_amount, 'ether')} ETH! TX: {web3.to_hex(tx_hash)}")
                     else:
-                        print(f"ℹ️ Wallet {idx+1}/150: Insufficient real balance to sweep.")
-                        
-                    time.sleep(random.uniform(0.5, 1.5))
-                except Exception as e:
-                    print(f"⚠️ Transfer failed for Wallet {idx+1}: {e}")
-                    
-            print("✅ All 150 Wallets scanned & swept.")
-            print("💤 MISSION ACCOMPLISHED.")
-            exit(0)
-            
-        # 3. NO - Stealth Farming
-        print("✅ No airdrops detected. Executing Stealth Farming on 150 Wallets...")
-        try:
-            ping_count = random.randint(100, 150)
-            for i in range(ping_count):
-                sender_wallet = random.choice(wallets)
-                nonce = web3.eth.get_transaction_count(sender_wallet.address)
-                tx = {
-                    'nonce': nonce,
-                    'to': farm_target,
-                    'value': 0,
-                    'gas': 21000,
-                    'gasPrice': web3.eth.gas_price,
-                    'chainId': web3.eth.chain_id
-                }
-                signed_tx = web3.eth.account.sign_transaction(tx, sender_wallet.key)
-                tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-                print(f"🚀 Farm Ping {i+1}/{ping_count} by {sender_wallet.address[:6]}... Hash: {web3.to_hex(tx_hash)}")
-                time.sleep(random.uniform(1.0, 2.5))
-        except Exception as e:
-            print(f"⚠️ Farming ping failed: {e}")
-            
-        print("✅ 150 Wallet Network Synced & Farmed.")
+                        tx = {
+                            'nonce': nonce,
+                            'to': main_checksum,
+                            'value': transferable_amount,
+                            'gas': gas_limit,
+                            'gasPrice': max_fee,
+                            'chainId': chain_id
+                        }
+
+                    signed_tx = w3.eth.account.sign_transaction(tx, acct.key)
+                    tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+                    print(f"✅ Sweep Successful! TX Hash: {w3.to_hex(tx_hash)}")
+                else:
+                    print("   ⏳ No sweepable balance found.")
+
+            except Exception as err:
+                print(f"⚠️ Error checking wallet {addr[:10]}: {err}")
+
+            # 30-Second interval between wallet executions
+            if idx < len(accounts) - 1:
+                print("⏳ Sleeping 30 seconds before checking next burner wallet...")
+                time.sleep(30)
+
+        print("\n✅ Verification cycle complete.")
         EOF
-        
-        python ultimate_bot.py
+
+        python bot.py
