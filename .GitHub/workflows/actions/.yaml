@@ -1,4 +1,4 @@
-name: AI Airdrop Auto-Claim & Sweeper
+name: 150 Wallets AI Airdrop Farmer & Sweeper
 
 on:
   schedule:
@@ -6,87 +6,95 @@ on:
   workflow_dispatch:
 
 jobs:
-  sweep:
+  airdrop_farm:
     runs-on: ubuntu-latest
     steps:
-    - name: Set up Python
+    - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
-    - name: Install Dependencies
+    - name: Install Web3 & AI Modules
       run: pip install web3 eth-account google-generativeai
 
-    - name: Run AI Sweeper Engine
+    - name: Execute 150-Wallet Master Engine
       env:
         MY_MAIN_ETH_ADDRESS: ${{ secrets.MY_MAIN_ETH_ADDRESS }}
-        BURNER_PRIVATE_KEYS: ${{ secrets.BURNER_PRIVATE_KEYS }}
+        MASTER_SEED_PHRASE: ${{ secrets.MASTER_SEED_PHRASE }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         RPC_URL: ${{ secrets.RPC_URL }}
       run: |
-        cat << 'EOF' > bot.py
+        cat << 'EOF' > master_farmer.py
         import os
         import sys
         import time
+        import random
         from web3 import Web3
         from eth_account import Account
         import google.generativeai as genai
 
+        Account.enable_unaudited_hdwallet_features()
+
         main_address = os.getenv('MY_MAIN_ETH_ADDRESS')
-        raw_keys = os.getenv('BURNER_PRIVATE_KEYS')
+        seed_phrase = os.getenv('MASTER_SEED_PHRASE')
         gemini_key = os.getenv('GEMINI_API_KEY')
-        rpc_url = os.getenv('RPC_URL', 'https://polygon-rpc.com')
+        rpc_url = os.getenv('RPC_URL', 'https://arb1.arbitrum.io/rpc')
 
-        if not main_address or not raw_keys:
-            print("❌ Secrets missing! Configure MY_MAIN_ETH_ADDRESS and BURNER_PRIVATE_KEYS.")
+        if not main_address or not seed_phrase:
+            print("❌ Secrets missing! Configure MY_MAIN_ETH_ADDRESS and MASTER_SEED_PHRASE.")
             sys.exit(1)
-
-        # 1. AI Airdrop Intelligence Layer
-        if gemini_key:
-            try:
-                genai.configure(api_key=gemini_key.strip())
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                print("🤖 Querying Gemini AI for active ecosystem distribution status...")
-                prompt = "Explain in one sentence why wallet balance surveillance is critical for decentralized reward drops."
-                response = model.generate_content(prompt)
-                print(f"💡 AI Insight: {response.text.strip()}\n")
-            except Exception as e:
-                print(f"⚠️ AI Module Notice: {e}")
-        else:
-            print("ℹ️ No GEMINI_API_KEY provided. Continuing standard algorithmic surveillance.")
 
         w3 = Web3(Web3.HTTPProvider(rpc_url.strip()))
         if not w3.is_connected():
-            print("❌ RPC connection failed. Check your RPC_URL secret.")
+            print("❌ RPC connection failed.")
             sys.exit(1)
 
         main_checksum = w3.to_checksum_address(main_address.strip())
         chain_id = w3.eth.chain_id
-        print(f"📡 Network Connected | Chain ID: {chain_id}")
-        print(f"🎯 Target Sweep Address: {main_checksum}\n")
+        print(f"📡 Connected to Chain ID: {chain_id}")
+        print(f"🎯 Target Destination Wallet: {main_checksum}\n")
 
-        # Parse Burner Accounts
-        keys_list = [k.strip() for k in raw_keys.split(',') if k.strip()]
-        accounts = []
-        for pk in keys_list:
-            if not pk.startswith('0x'):
-                pk = '0x' + pk
+        # 1. Deterministic derivation of 150 Persistent Wallets
+        TOTAL_WALLETS = 150
+        clean_seed = " ".join(seed_phrase.strip().split())
+        wallets = []
+        try:
+            print(f"🔐 Deriving and saving {TOTAL_WALLETS} persistent wallets from master seed...")
+            for i in range(TOTAL_WALLETS):
+                path = f"m/44'/60'/0'/0/{i}"
+                acct = Account.from_mnemonic(clean_seed, account_path=path)
+                wallets.append(acct)
+            print(f"✅ {len(wallets)} Wallets loaded in secure memory.\n")
+        except Exception as e:
+            print(f"❌ Wallet derivation failed: {e}")
+            sys.exit(1)
+
+        # 2. AI Market Intelligence Layer
+        ai_trigger = "YES"
+        if gemini_key:
             try:
-                accounts.append(Account.from_key(pk))
+                genai.configure(api_key=gemini_key.strip())
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                print("🧠 Asking Gemini AI to verify active distribution pipelines...")
+                prompt = "Respond with strictly YES if decentralized airdrop scanning should proceed."
+                response = model.generate_content(prompt)
+                ai_trigger = response.text.strip().upper()
+                print(f"🤖 Gemini Status: {ai_trigger}\n")
             except Exception as e:
-                print(f"⚠️ Invalid private key skipped: {e}")
+                print(f"⚠️ AI Module Warning: {e}. Defaulting to YES.")
 
-        print(f"🔍 Monitoring {len(accounts)} burner wallet(s)...\n")
-
+        # 3. Surveillance and Auto-Sweep Routine
         gas_limit = 21000
-        for idx, acct in enumerate(accounts):
+        swept_count = 0
+
+        for idx, acct in enumerate(wallets):
             addr = acct.address
             try:
                 balance_wei = w3.eth.get_balance(addr)
                 balance_eth = w3.from_wei(balance_wei, 'ether')
-                print(f"[{idx+1}/{len(accounts)}] Checking {addr[:10]}... | Balance: {balance_eth:.6f}")
+                print(f"[{idx+1}/{TOTAL_WALLETS}] Wallet {addr[:10]}... | Balance: {balance_eth:.6f}")
 
-                # Dynamic EIP-1559 / Legacy Gas Calculation
+                # Gas Calculation
                 try:
                     fee_history = w3.eth.fee_history(1, 'latest', [25])
                     base_fee = fee_history['baseFeePerGas'][-1]
@@ -99,12 +107,12 @@ jobs:
 
                 required_gas = gas_limit * max_fee
 
-                # Auto-transfer if balance covers gas fee
+                # Auto-Sweep on Balance Detection
                 if balance_wei > required_gas:
                     transferable_amount = balance_wei - required_gas
-                    print(f"🚀 Funds detected! Auto-sweeping {w3.from_wei(transferable_amount, 'ether')} to {main_checksum[:10]}...")
-
+                    print(f"💰 Airdrop/Balance Detected! Sweeping {w3.from_wei(transferable_amount, 'ether')} ETH to {main_checksum[:10]}...")
                     nonce = w3.eth.get_transaction_count(addr, 'pending')
+                    
                     if use_eip1559:
                         tx = {
                             'nonce': nonce,
@@ -128,19 +136,16 @@ jobs:
 
                     signed_tx = w3.eth.account.sign_transaction(tx, acct.key)
                     tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-                    print(f"✅ Sweep Successful! TX Hash: {w3.to_hex(tx_hash)}")
-                else:
-                    print("   ⏳ No sweepable balance found.")
-
+                    print(f"🚀 Swept Successfully! TX Hash: {w3.to_hex(tx_hash)}")
+                    swept_count += 1
+                    time.sleep(2)
             except Exception as err:
-                print(f"⚠️ Error checking wallet {addr[:10]}: {err}")
+                print(f"⚠️ Scan error on wallet {addr[:10]}: {err}")
 
-            # 30-Second interval between wallet executions
-            if idx < len(accounts) - 1:
-                print("⏳ Sleeping 30 seconds before checking next burner wallet...")
-                time.sleep(30)
+            # Safe interval to avoid RPC rate limiting
+            time.sleep(0.2)
 
-        print("\n✅ Verification cycle complete.")
+        print(f"\n✅ Surveillance complete. Total active sweeps executed: {swept_count}")
         EOF
 
-        python bot.py
+        python master_farmer.py
